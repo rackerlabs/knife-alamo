@@ -42,51 +42,6 @@ class Chef
       :description => "Flavor ID to build server from",
       :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:flavor_ref] = entry.to_s }
 
-      option :alamo_key_name,
-      :long => "--key-name KEY_NAME",
-      :description => "ssh key to be embedded in the server",
-      :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:key_name] = entry.to_s }
-
-      option :alamo_bastion,
-      :long => "--bastion NAME",
-      :description => "Bastion server name (typically your all-in-one/controller node",
-      :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:bastion] = entry.to_s }
-
-      option :alamo_bastion_login,
-      :long => "--bastion-login USERNAME",
-      :description => "Account to log in to the bastion server (ssh)",
-      :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:bastion_login] = entry.to_s }
-
-      option :alamo_bastion_pass,
-      :long => "--bastion-pass PASSWORD",
-      :description => "Login password to the bastion server",
-      :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:bastion_pass] = entry.to_s }
-
-      option :alamo_instance_login,
-      :long => "--instance-login USERNAME",
-      :description => "Username to log in to the instance for chef-client installation",
-      :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:instance_login] = entry.to_s }
-
-      option :alamo_privkey_file,
-      :long => "--privkey /PATH/TO/ID_RSA",
-      :description => "ssh key (private) for the instance. Defaults to ssh normal places if blank (~/.ssh/id_rsa)",
-      :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:privkey_file] = entry.to_s }
-
-      option :alamo_validation_pem,
-      :long => "--validation-pem /PATH/TO/VALIDATION.PEM",
-      :description => "Chef server validation.pem file",
-      :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:validation_pem] = entry.to_s }
-
-      option :alamo_instance_chefenv,
-      :long => "--chefenv CHEF_ENVIRONMENT",
-      :description => "Chef environment to assign the instance to",
-      :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:instance_chefenv] = entry.to_s }
-
-      option :alamo_instance_runlist,
-      :long => "--runlist RUNLIST_ITEM1,RUNLIST_ITEM2,...",
-      :description => "List of roles/recipes to initially run after chef-client installation.",
-      :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:instance_runlist] = entry.to_s }
-
       def run
         nova_endpoint, auth_id = get_nova_endpoint
         post_body = {
@@ -101,6 +56,7 @@ class Chef
         provision(server_record['server']['id'])
       end
     end
+
     class AlamoServerDelete < Knife
       banner "knife alamo server delete SERVER_ID"
       include Knife::AlamoBase
@@ -115,50 +71,10 @@ class Chef
         RestClient.delete "#{nova_endpoint}/servers/#{name_args.first}", {"X-Auth-Token" => auth_id, :content_type => :json, :accept=> :json}
       end
     end
+
     class AlamoServerChefclient < Knife
       banner "knife alamo server chefclient SERVER_ID"
       include Knife::AlamoBase
-      
-      option :alamo_bastion,
-      :long => "--bastion NAME",
-      :description => "Bastion server name (typically your all-in-one/controller node",
-      :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:bastion] = entry.to_s }
-      
-      option :alamo_bastion_login,
-      :long => "--bastion-login USERNAME",
-      :description => "Account to log in to the bastion server (ssh)",
-      :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:bastion_login] = entry.to_s }
-
-      option :alamo_bastion_pass,
-      :long => "--bastion-pass PASSWORD",
-      :description => "Login password to the bastion server",
-      :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:bastion_pass] = entry.to_s }
-
-      option :alamo_instance_login,
-      :long => "--instance-login USERNAME",
-      :description => "Username to log in to the instance for chef-client installation",
-      :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:instance_login] = entry.to_s }
-
-      option :alamo_privkey_file,
-      :long => "--privkey /PATH/TO/ID_RSA",
-      :description => "ssh key (private) for the instance. Defaults to ssh normal places if blank (~/.ssh/id_rsa)",
-      :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:privkey_file] = entry.to_s }
-
-      option :alamo_validation_pem,
-      :long => "--validation-pem /PATH/TO/VALIDATION.PEM",
-      :description => "Chef server validation.pem file",
-      :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:validation_pem] = entry.to_s }
-
-      option :alamo_instance_runlist,
-      :long => "--runlist RUNLIST_ITEM1,RUNLIST_ITEM2,...",
-      :description => "List of roles/recipes to initially run after chef-client installation.",
-      :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:instance_runlist] = entry.to_s }
-
-      option :alamo_instance_chefenv,
-      :long => "--chefenv CHEF_ENVIRONMENT",
-      :description => "Chef environment to assign the instance to",
-      :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:instance_chefenv] = entry.to_s }
-
       def run
         unless name_args.size == 1
           puts "Please provide a server id to provision with Chef"

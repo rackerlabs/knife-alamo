@@ -10,53 +10,85 @@ class Chef
       def self.included(includer)
         includer.class_eval do
           deps do
-            require 'net/ssh/multi'
-            require 'readline'
             require 'chef/json_compat'
           end
           
-          option :alamo_username,
-          :short => "-A USERNAME",
-          :long => "--openstack-usernamee USERNAME",
+          option :alamo_openstack_user,
+          :long => "--openstack-user USERNAME",
           :description => "Your openstack username",
-          :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:username] = entry.to_s }
+          :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:openstack_user] = entry.to_s }
 
-          option :alamo_password,
-          :short => "-P PASSWORD",
-          :long => "--openstack-password PASSWORD",
+          option :alamo_openstack_pass,
+          :long => "--openstack-pass PASSWORD",
           :description => "Your openstack password",
-          :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:password] = entry.to_s }
+          :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:openstack_pass] = entry.to_s }
 
-          option :alamo_auth_endpoint,
-          :short => "-E ENDPOINT",
-          :long => "--openstack-auth-endpoint URL",
+          option :alamo_controller_ip,
+          :long => "--controller-ip IP",
           :description => "Your keystone endpoint",
-          :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:auth_url] = entry.to_s }
+          :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:controller_ip] = entry.to_s }
 
           option :alamo_tenant,
-          :short => "-T TENANT",
           :long => "--openstack-tenant TENANT",
           :description => "Your tenant name",
           :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:tenant] = entry.to_s }
+
+          option :alamo_region,
+          :long => "--openstack-region REGION",
+          :description => "Your openstack region",
+          :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:region] = entry.to_s }
+       
+          option :alamo_key_name,
+          :long => "--key-name KEYNAME",
+          :description => "name of ssh key to be embedded into instances.",
+          :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:key_name] = entry.to_s }
+
+          option :alamo_instance_ssh_user,
+          :long => "--instance-ssh-user USER",
+          :description => "The user to ssh into instances with",
+          :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:instance_ssh_user] = entry.to_s }
+
+          option :alamo_instance_runlist,
+          :long => "--runlist RUNLIST_ITEM1,RUNLIST_ITEM2,...",
+          :description => "List of roles/recipes to initially run after chef-client installation.",
+          :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:instance_runlist] = entry.to_s }
+
+          option :alamo_instance_chefenv,
+          :long => "--chefenv CHEF_ENVIRONMENT",
+          :description => "Chef environment to assign the instance to.",
+          :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:instance_chefenv] = entry.to_s }
+
+          option :alamo_privkey_file,
+          :long => "--privkey /PATH/TO/ID_RSA",
+          :description => "ssh key (private) for the instance. Defaults to ssh's builtin locations if empty (~/.ssh/id_rsa)",
+          :proc => Proc.new{ |entry| Chef::Config[:knife][:alamo][:privkey_file] = entry.to_s }
+
+          option :alamo_validation_pemfile,
+          :long => "--validation-pemfile /PATH/TO/VALIDATION.PEM",
+          :description => "Chef validation.pem file. If unspecified, will snag it from the controller node.",
+          :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:privkey_file] = entry.to_s }
+
         end
       end
-      
+
       class KeystoneAuth
         attr_accessor :keystone_auth
+        def self.gen_endpoint
+          return "http://#{Chef::Config[:knife][:alamo][:controller_ip]}:5000/v2.0/tokens"
+        end
         def initialize
           post_body = {
             "auth" =>
             {
               "passwordCredentials" =>
               {
-                "username" => Chef::Config[:knife][:alamo][:username],
-                "password" => Chef::Config[:knife][:alamo][:password]
+                "username" => Chef::Config[:knife][:alamo][:openstack_user],
+                "password" => Chef::Config[:knife][:alamo][:openstack_pass]
               },
-              "tenantName"=> Chef::Config[:knife][:alamo][:tenant]
+              "tenantName"=> Chef::Config[:knife][:alamo][:openstack_tenant]
             }
           }
-          @keystone_auth = JSON.parse RestClient.post Chef::Config[:knife][:alamo][:auth_url], 
-          post_body.to_json, :content_type => :json, :accept => :json
+          @keystone_auth = JSON.parse RestClient.post KeystoneAuth::gen_endpoint, post_body.to_json, :content_type => :json, :accept => :json
         end
       end
 
@@ -67,7 +99,7 @@ class Chef
         auth["access"]["serviceCatalog"].each do |endpoints|
           if endpoints["type"] == "compute"
             endpoints["endpoints"].each do | endpoint|
-              nova_endpoint = endpoint["publicURL"] if endpoint["region"] == Chef::Config[:knife][:alamo][:region]
+              nova_endpoint = endpoint["publicURL"] if endpoint["region"] == Chef::Config[:knife][:alamo][:openstack_region]
             end
           end
         end
@@ -84,11 +116,12 @@ class Chef
         end
         retstr
       end
+      
       def provision(server_id)
         begin
-          bastion = Chef::Config[:knife][:alamo][:bastion]
-          bastion_login = Chef::Config[:knife][:alamo][:bastion_login]
-          bastion_pass = Chef::Config[:knife][:alamo][:bastion_pass]
+          bastion = Chef::Config[:knife][:alamo][:controller_ip]
+          bastion_login = Chef::Config[:knife][:alamo][:ssh_user]
+          bastion_pass = Chef::Config[:knife][:alamo][:ssh_pass]
           instance_login = Chef::Config[:knife][:alamo][:instance_login]
           privkey = Chef::Config[:knife][:alamo][:privkey_file] || nil
           runlist = Chef::Config[:knife][:alamo][:instance_runlist] || nil
@@ -107,9 +140,12 @@ class Chef
           
           # Use your regular old $HOME/.ssh/id_rsa if you don't specify one
           opt_block = privkey != nil ? {:keys => [privkey]} : {}
+          if Chef::Config[:knife][:alamo][:validation_pem] != nil
+            validation_key = IO.read(Chef::Config[:knife][:alamo][:validation_pem])
+          end
           gateway.ssh(server_ip, instance_login, opt_block) do |ssh|
             puts "Successfully logged in to instance. Firing up chef-client!"
-            validation_key = IO.read(Chef::Config[:knife][:alamo][:validation_pem])
+
             
             clientrb = ["log_level :info",
                         "log_location STDOUT",
@@ -119,6 +155,7 @@ class Chef
                         "validation_client_name '#{Chef::Config[:validation_client_name]}'"].join("\n")
             
             command = "if [ `which chef-client | wc -l` -eq 0 ]; then "
+            command << "echo Chef client not installed. Installing chef-client...; "
             command << "if [ `whoami` != 'root' ]; then sudocmd='sudo '; else sudocmd=''; fi;"
             command << "curl -L https://www.opscode.com/chef/install.sh | $sudocmd bash && "
             command << "$sudocmd mkdir /etc/chef && "
