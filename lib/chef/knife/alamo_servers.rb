@@ -4,6 +4,9 @@ require 'json'
 require 'net/ssh'
 require 'net/ssh/multi'
 
+require 'chef/node'
+require 'chef/api_client'
+
 class Chef
   class Knife
     class AlamoServerList < Knife
@@ -43,6 +46,19 @@ class Chef
       :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:flavor_ref] = entry.to_s }
 
       def run
+        # Check if a server with the name already exists
+        name = Chef::Config[:knife][:alamo][:server_name]
+        if not name or name.length == 0
+          puts "Please provide a name for the new server."
+          exit 1
+        end
+
+        servers = search_server_name(name)
+        if servers.length > 0
+          puts "ERROR: a server with the name \"#{name}\" already exists"
+          exit 1
+        end
+
         nova_endpoint, auth_id = get_nova_endpoint
         post_body = {
           "server" => {
@@ -58,29 +74,61 @@ class Chef
     end
 
     class AlamoServerDelete < Knife
-      banner "knife alamo server delete SERVER_ID"
+      banner "knife alamo server delete SERVER_NAME"
       include Knife::AlamoBase
+
+      option :purge,
+      :long => "--purge",
+      :short => "-P",
+      :description => "Also delete the associated node and API client",
+      :boolean => true,
+      :default => false
+
       def run
+        # Validate the arguments
         unless name_args.size == 1
-          puts "Please provide a id of a server to delete"
+          puts "Please provide the name of a server to delete"
           show_usage
           exit 1
         end
-        name_args.first
+
+        # Grab the API endpoint
         nova_endpoint, auth_id = get_nova_endpoint
-        RestClient.delete "#{nova_endpoint}/servers/#{name_args.first}", {"X-Auth-Token" => auth_id, :content_type => :json, :accept=> :json}
+
+        # Look for the server, and grab the UUID or quit if not match is found
+        uuid = get_uuid_for_server_name(name_args.first)
+
+        # Delete the server
+        RestClient.delete "#{nova_endpoint}/servers/#{uuid}", {"X-Auth-Token" => auth_id, :content_type => :json, :accept=> :json}
+
+        # Delete the matching node in chef
+        if config[:purge]
+          node = Chef::Node.load(name_args.first)
+          node.destroy
+          client = Chef::ApiClient.load(name_args.first)
+          client.destroy
+        end
       end
     end
 
     class AlamoServerChefclient < Knife
-      banner "knife alamo server chefclient SERVER_ID"
+      banner "knife alamo server chefclient SERVER_NAME"
       include Knife::AlamoBase
       def run
+        # Validate the arguments
         unless name_args.size == 1
-          puts "Please provide a server id to provision with Chef"
+          puts "Please provide a server name to provision with Chef"
           show_usage
           exit 1
         end
+
+        # Grab the API endpoint
+        nova_endpoint, auth_id = get_nova_endpoint
+
+        # Look for the server, and grab the UUID or quit if not match is found
+        uuid = get_uuid_for_server_name name_args.first
+
+        # Run chef client on the server
         provision(name_args.first)
       end
     end

@@ -106,6 +106,21 @@ class Chef
         return nova_endpoint, auth_id
       end
 
+      def search_server_name(name)
+        nova_endpoint, auth_id = get_nova_endpoint
+        matches = JSON.parse RestClient.get "#{nova_endpoint}/servers", {:params => {:name => name}, "X-Auth-Token" => auth_id, :content_type => :json, :accept => :json}
+        return matches['servers']
+      end
+
+      def get_uuid_for_server_name(name)
+        matches = search_server_name(name)
+        unless matches.length == 1
+          puts "ERROR: could not find server with the name \"#{name_args.first}\""
+          exit 1
+        end
+        return matches[0]['id']
+      end
+
       def format(keys, vals)
         retstr = ''
         keys.each{|(k,v)| retstr += k.ljust(8*v)}
@@ -135,6 +150,7 @@ class Chef
           end
 
           server_ip = server['server']['addresses']['public'][0]['addr']
+          node_name = server['server']['name']
           
           gateway = Net::SSH::Gateway.new(bastion, bastion_login, :password => bastion_pass)
           
@@ -152,7 +168,8 @@ class Chef
                         "ssl_verify_mode :verify_none",
                         "chef_server_url '#{Chef::Config[:chef_server_url]}'",
                         "validation_key '/etc/chef/validation.pem'",
-                        "validation_client_name '#{Chef::Config[:validation_client_name]}'"].join("\n")
+                        "validation_client_name '#{Chef::Config[:validation_client_name]}'",
+                        "node_name '#{node_name}'"].join("\n")
             
             command = "if [ `which chef-client | wc -l` -eq 0 ]; then "
             command << "echo Chef client not installed. Installing chef-client...; "
