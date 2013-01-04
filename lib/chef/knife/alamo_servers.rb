@@ -129,7 +129,7 @@ class Chef
         uuid = get_uuid_for_server_name name_args.first
 
         # Run chef client on the server
-        provision(name_args.first)
+        provision uuid
       end
     end
   end
