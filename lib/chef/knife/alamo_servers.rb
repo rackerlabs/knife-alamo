@@ -69,7 +69,7 @@ class Chef
           }
         }
         server_record = JSON.parse RestClient.post "#{nova_endpoint}/servers", post_body.to_json, {"X-Auth-Token" => auth_id, :content_type => :json, :accept => :json}
-        provision(server_record['server']['id'])
+        provision server_record['server']['id']
       end
     end
 
