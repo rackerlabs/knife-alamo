@@ -68,6 +68,11 @@ class Chef
           :description => "Chef validation.pem file. If unspecified, will snag it from the controller node.",
           :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:privkey_file] = entry.to_s }
 
+          option :alamo_bastion,
+          :long => "--bastion BASTION.IP.ADDR.ESS",
+          :description => "Bastion IP to reach private instance fixed networks",
+          :proc => Proc.new { |entry| Chef::Config[:knife][:alamo][:bastion] = entry.to_s }
+
         end
       end
 
@@ -134,7 +139,7 @@ class Chef
       
       def provision(server_id)
         begin
-          bastion = Chef::Config[:knife][:alamo][:controller_ip]
+          bastion = Chef::Config[:knife][:alamo][:bastion]
           bastion_login = Chef::Config[:knife][:alamo][:ssh_user]
           bastion_pass = Chef::Config[:knife][:alamo][:ssh_pass]
           instance_login = Chef::Config[:knife][:alamo][:instance_login]
